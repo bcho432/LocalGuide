@@ -1,0 +1,26 @@
+{
+  "name": "rest-recommender",
+  "version": "1.0.0",
+  "description": "Local Events & Restaurant Recommender App",
+  "main": "server/index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "server": "cd server && npm run dev",
+    "client": "cd client && npm start",
+    "build": "cd client && npm run build",
+    "install-all": "npm install && cd server && npm install && cd ../client && npm install"
+  },
+  "keywords": [
+    "restaurant",
+    "events",
+    "recommender",
+    "local",
+    "api"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/leaflet": "^1.9.19",
+    "concurrently": "^8.2.2"
+  }
+}
