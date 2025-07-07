@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import React, { useState, useRef, useEffect } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
@@ -86,10 +86,93 @@ const stats = [
   { icon: '⭐', value: '100,000+', label: 'Reviews' },
 ];
 
+// MapUpdater component to recenter map
+const MapUpdater = ({ center }: { center: [number, number] }) => {
+  const map = useMap();
+  useEffect(() => {
+    if (center) {
+      map.setView(center);
+    }
+  }, [center, map]);
+  return null;
+};
+
 const Home: React.FC = () => {
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [loadingLocation, setLoadingLocation] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
+  const [restaurants, setRestaurants] = useState<any[]>([]);
+  const [searchAddress, setSearchAddress] = useState<string>('');
+  const [searchingLocation, setSearchingLocation] = useState(false);
+  const [searchedAddress, setSearchedAddress] = useState<string>('');
+  const [suggestions, setSuggestions] = useState<{ description: string; place_id: string }[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState<number>(-1);
+  const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  async function fetchNearbyRestaurants(lat: number, lng: number) {
+    try {
+      const response = await fetch(`http://localhost:5001/api/restaurants/nearby?lat=${lat}&lng=${lng}`);
+      const data = await response.json();
+      return data.results || [];
+    } catch (error) {
+      return [];
+    }
+  }
+
+  // Geocode address to coordinates
+  const geocodeAddress = async (address: string) => {
+    try {
+      const response = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${process.env.REACT_APP_GOOGLE_MAPS_API_KEY}`);
+      const data = await response.json();
+      
+      if (data.status === 'OK' && data.results.length > 0) {
+        const { lat, lng } = data.results[0].geometry.location;
+        return { lat, lng };
+      } else if (data.status === 'ZERO_RESULTS') {
+        throw new Error('Address not found. Please try a different location.');
+      } else if (data.status === 'REQUEST_DENIED') {
+        throw new Error('Geocoding service is not available.');
+      } else {
+        throw new Error(`Geocoding error: ${data.status}`);
+      }
+    } catch (error) {
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('Failed to geocode address. Please try again.');
+    }
+  };
+
+  // Get address suggestions for autocomplete
+  const getAddressSuggestions = async (input: string) => {
+    if (!input.trim() || input.length < 3) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    try {
+      const response = await fetch(`http://localhost:5001/api/restaurants/autocomplete?input=${encodeURIComponent(input)}`);
+      const data = await response.json();
+      if (data.success && data.predictions) {
+        const suggestions = data.predictions.map((prediction: any) => ({
+          description: prediction.description,
+          place_id: prediction.place_id
+        }));
+        setSuggestions(suggestions);
+        setShowSuggestions(true);
+        setSelectedSuggestionIndex(-1);
+      } else {
+        setSuggestions([]);
+        setShowSuggestions(false);
+      }
+    } catch (error) {
+      console.error('Error fetching suggestions:', error);
+      setSuggestions([]);
+      setShowSuggestions(false);
+    }
+  };
 
   const handleGetLocation = () => {
     setLoadingLocation(true);
@@ -100,15 +183,110 @@ const Home: React.FC = () => {
       return;
     }
     navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setLocation({ lat: position.coords.latitude, lng: position.coords.longitude });
+      async (position) => {
+        const coords = { lat: position.coords.latitude, lng: position.coords.longitude };
+        setLocation(coords);
+        localStorage.setItem('userLocation', JSON.stringify(coords));
         setLoadingLocation(false);
+        setSearchedAddress('');
+        // Fetch restaurants
+        const results = await fetchNearbyRestaurants(coords.lat, coords.lng);
+        setRestaurants(results);
+        // Save to localStorage for caching
+        localStorage.setItem('cachedRestaurants', JSON.stringify(results));
+        localStorage.setItem('cachedLocation', JSON.stringify(coords));
       },
       (error) => {
         setLocationError('Unable to retrieve your location.');
         setLoadingLocation(false);
       }
     );
+  };
+
+  const handleSearchLocation = async () => {
+    if (!searchAddress.trim()) {
+      setLocationError('Please enter an address to search.');
+      return;
+    }
+    setSearchingLocation(true);
+    setLocationError(null);
+    setShowSuggestions(false);
+    try {
+      let coords;
+      if (selectedPlaceId) {
+        // Use place_id for geocoding
+        const response = await fetch(`http://localhost:5001/api/restaurants/geocode?placeId=${selectedPlaceId}`);
+        const data = await response.json();
+        if (!data.lat || !data.lng) throw new Error('Location not found');
+        coords = { lat: data.lat, lng: data.lng };
+      } else {
+        // Fallback to address
+        const response = await fetch(`http://localhost:5001/api/restaurants/geocode?address=${encodeURIComponent(searchAddress.trim())}`);
+        const data = await response.json();
+        if (!data.lat || !data.lng) throw new Error('Location not found');
+        coords = { lat: data.lat, lng: data.lng };
+      }
+      setLocation(coords);
+      localStorage.setItem('userLocation', JSON.stringify(coords));
+      setSearchingLocation(false);
+      setSearchedAddress(searchAddress.trim());
+      setSelectedPlaceId(null);
+      // Fetch restaurants
+      const results = await fetchNearbyRestaurants(coords.lat, coords.lng);
+      setRestaurants(results);
+      // Save to localStorage for caching
+      localStorage.setItem('cachedRestaurants', JSON.stringify(results));
+      localStorage.setItem('cachedLocation', JSON.stringify(coords));
+    } catch (error) {
+      setLocationError('Unable to find that address. Please try a different location.');
+      setSearchingLocation(false);
+    }
+  };
+
+  // Handle suggestion selection
+  const handleSuggestionClick = (suggestion: { description: string; place_id: string }) => {
+    setSearchAddress(suggestion.description);
+    setSelectedPlaceId(suggestion.place_id);
+    setShowSuggestions(false);
+    setSuggestions([]);
+  };
+
+  // Handle keyboard navigation
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (selectedSuggestionIndex >= 0 && suggestions[selectedSuggestionIndex]) {
+        handleSuggestionClick(suggestions[selectedSuggestionIndex]);
+      } else {
+        handleSearchLocation();
+      }
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedSuggestionIndex(prev => 
+        prev < suggestions.length - 1 ? prev + 1 : prev
+      );
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedSuggestionIndex(prev => prev > 0 ? prev - 1 : -1);
+    } else if (e.key === 'Escape') {
+      setShowSuggestions(false);
+      setSuggestions([]);
+    }
+  };
+
+  // Debounced input change handler
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setSearchAddress(value);
+    setSelectedSuggestionIndex(-1);
+    
+    // Debounce the autocomplete request
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+    timeoutRef.current = setTimeout(() => {
+      getAddressSuggestions(value);
+    }, 300);
   };
 
   return (
@@ -122,26 +300,105 @@ const Home: React.FC = () => {
           <p className="text-lg md:text-2xl mb-10 max-w-2xl mx-auto opacity-95 font-medium">
             Find the best restaurants and local events based on your location, preferences, and current time.
           </p>
-          <button
-            className="btn btn-white text-primary-600 font-semibold shadow-md mb-8 px-8 py-3 text-lg hover:scale-105 transition-transform"
-            onClick={handleGetLocation}
-            disabled={loadingLocation}
-          >
-            {loadingLocation ? 'Getting Location...' : 'Get My Location'}
-          </button>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center mb-8">
-            <a href="/restaurants" className="btn btn-outline text-white border-white font-semibold shadow-md px-8 py-3 text-lg hover:bg-white hover:text-primary-600 hover:scale-105 transition-transform">Find Restaurants</a>
-            <a href="/events" className="btn btn-outline text-white border-white font-semibold shadow-md px-8 py-3 text-lg hover:bg-white hover:text-primary-600 hover:scale-105 transition-transform">Find Events</a>
+          <p className="text-base md:text-lg mb-6 max-w-2xl mx-auto opacity-90">
+            Click 'Get My Location' or enter an address to start right away!
+          </p>
+          
+          {/* Location Options */}
+          <div className="flex flex-col lg:flex-row gap-4 justify-center items-center mb-8 w-full max-w-4xl mx-auto lg:pl-16">
+            {/* Get Current Location */}
+            <div className="flex flex-col items-center">
+              <button
+                className="btn btn-white text-primary-600 font-semibold shadow-md px-8 py-3 text-lg hover:scale-105 transition-transform mb-2"
+                onClick={handleGetLocation}
+                disabled={loadingLocation}
+              >
+                {loadingLocation ? 'Getting Location...' : '📍 Get My Location'}
+              </button>
+              <p className="text-sm opacity-80">Use your current location</p>
+            </div>
+            
+            {/* Divider */}
+            <div className="text-white text-lg font-bold">OR</div>
+            
+            {/* Search Location */}
+            <div className="flex flex-col items-center">
+              <div className="flex gap-2 mb-2 relative items-center">
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Enter an address (e.g., 'Times Square, NY')"
+                    value={searchAddress}
+                    onChange={handleInputChange}
+                    onKeyDown={handleKeyDown}
+                    onFocus={() => searchAddress.length >= 3 && setShowSuggestions(true)}
+                    onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                    className="px-4 py-3 rounded-lg bg-white text-gray-900 placeholder-gray-500 shadow-lg min-w-80 focus:outline-none focus:ring-2 focus:ring-blue-400 border border-gray-300"
+                    disabled={searchingLocation}
+                  />
+                  {/* Autocomplete Dropdown */}
+                  {showSuggestions && suggestions.length > 0 && (
+                    <div className="absolute top-full left-0 right-0 bg-white border border-gray-300 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
+                      {suggestions.map((suggestion, index) => (
+                        <div
+                          key={suggestion.place_id}
+                          className={`px-4 py-3 cursor-pointer hover:bg-gray-100 transition-colors ${
+                            index === selectedSuggestionIndex ? 'bg-blue-100' : ''
+                          }`}
+                          onClick={() => handleSuggestionClick(suggestion)}
+                          onMouseEnter={() => setSelectedSuggestionIndex(index)}
+                        >
+                          <div className="flex items-center">
+                            <span className="text-gray-600 mr-2">📍</span>
+                            <span className="text-gray-900">{suggestion.description}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <button
+                  className="btn btn-white text-primary-600 font-semibold shadow-md px-4 py-2 text-base hover:scale-105 transition-transform"
+                  onClick={handleSearchLocation}
+                  disabled={searchingLocation}
+                >
+                  {searchingLocation ? 'Searching...' : '🔍 Search'}
+                </button>
+              </div>
+              <p className="text-sm opacity-80 mt-2 text-left w-full">Select a location then press Enter to search</p>
+            </div>
           </div>
+          
+          {location && (
+            <div className="flex flex-col sm:flex-row gap-4 justify-center mb-8 mt-8 animate-fade-in">
+              <a href="/restaurants" className="btn btn-outline text-white border-white font-semibold shadow-md px-8 py-3 text-lg hover:bg-white hover:text-primary-600 hover:scale-105 transition-transform">Find Restaurants</a>
+              <a href="/events" className="btn btn-outline text-white border-white font-semibold shadow-md px-8 py-3 text-lg hover:bg-white hover:text-primary-600 hover:scale-105 transition-transform">Find Events</a>
+            </div>
+          )}
           {locationError && <div className="text-red-200 font-semibold mt-2">{locationError}</div>}
         </div>
       </section>
+
+      {/* Guidance Message */}
+      {location && (
+        <div className="w-full bg-blue-50 py-6 border-b border-blue-200">
+          <div className="max-w-4xl mx-auto text-center">
+            <p className="text-lg text-blue-800 font-medium">
+              {searchedAddress 
+                ? `Great! Found location for "${searchedAddress}". Now you can click 'Find Restaurants' or 'Find Events' to find local restaurants or events going on in that area!`
+                : "Great! Now you can click 'Find Restaurants' or 'Find Events' to find local restaurants or events going on in your area!"
+              }
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Map Section */}
       {location && (
         <div className="w-full flex justify-center bg-white py-8">
           <div className="w-full max-w-2xl h-96 rounded-xl overflow-hidden shadow-lg border border-gray-200">
             <MapContainer center={[location.lat, location.lng]} zoom={14} style={{ height: '100%', width: '100%' }} scrollWheelZoom={false}>
+              <MapUpdater center={[location.lat, location.lng]} />
               <TileLayer
                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -150,6 +407,37 @@ const Home: React.FC = () => {
                 <Popup>You are here!</Popup>
               </Marker>
             </MapContainer>
+          </div>
+        </div>
+      )}
+
+      {/* Restaurant List Section */}
+      {restaurants.length > 0 && (
+        <div className="max-w-4xl mx-auto my-8">
+          <h2 className="text-xl font-bold mb-4">Nearby Restaurants</h2>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {restaurants.map((r) => (
+              <div key={r.place_id} className="bg-white p-4 rounded-lg shadow-md">
+                <h3 className="font-semibold text-lg mb-2">{r.name}</h3>
+                <p className="text-gray-600 text-sm mb-2">{r.vicinity}</p>
+                {r.rating && (
+                  <p className="text-sm text-yellow-600 mb-2">⭐ {r.rating} {r.user_ratings_total && `(${r.user_ratings_total} reviews)`}</p>
+                )}
+                {r.phone && (
+                  <p className="text-sm text-gray-600 mb-2">📞 {r.phone}</p>
+                )}
+                {r.yelpUrl && (
+                  <a 
+                    href={r.yelpUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-sm text-red-600 hover:text-red-800"
+                  >
+                    View on Yelp →
+                  </a>
+                )}
+              </div>
+            ))}
           </div>
         </div>
       )}

@@ -17,12 +17,15 @@ export interface Restaurant {
   yelpUrl?: string;
   phone?: string;
   categories?: string[];
+  vicinity?: string;
+  distance?: number;
 }
 
 export interface RestaurantDetails extends Restaurant {
   website?: string;
   reviews?: any[];
   yelp?: any;
+  openingHoursText?: string[];
 }
 
 export interface RestaurantFilters {

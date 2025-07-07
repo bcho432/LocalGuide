@@ -33,7 +33,8 @@ export const auth = (req: AuthRequest, res: Response, next: NextFunction) => {
       email: decoded.email
     };
 
-    return next();
+    next();
+    return;
   } catch (error) {
     console.error('Auth middleware error:', error);
     return res.status(401).json({ error: 'Token is not valid' });

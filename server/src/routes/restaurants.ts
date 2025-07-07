@@ -1,8 +1,37 @@
 import express from 'express';
-import { getRestaurants, getRestaurantDetails, searchRestaurants } from '../controllers/restaurantController';
+import { getRestaurants, getRestaurantDetails, searchRestaurants, getAddressSuggestions, geocodeLocation } from '../controllers/restaurantController';
 import { auth } from '../middleware/auth';
 
 const router = express.Router();
+
+// Get address suggestions for autocomplete
+router.get('/autocomplete', getAddressSuggestions);
+
+// Geocode address or place_id to coordinates
+router.get('/geocode', geocodeLocation);
+
+// Proxy for Google Directions API
+router.get('/directions', async (req, res) => {
+  const { origin, destination } = req.query;
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_PLACES_API_KEY;
+  try {
+    const axios = (await import('axios')).default;
+    const response = await axios.get('https://maps.googleapis.com/maps/api/directions/json', {
+      params: {
+        origin,
+        destination,
+        mode: 'driving',
+        key: apiKey,
+      },
+    });
+    // Log the full response for debugging
+    console.log('Directions API response:', JSON.stringify(response.data, null, 2));
+    res.json(response.data);
+  } catch (error) {
+    console.error('Error fetching directions:', error);
+    res.status(500).json({ error: 'Failed to fetch directions' });
+  }
+});
 
 // Get restaurants near a location
 router.get('/nearby', getRestaurants);

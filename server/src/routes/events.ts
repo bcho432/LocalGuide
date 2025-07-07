@@ -1,16 +1,14 @@
 import express from 'express';
 import { getEvents, getEventDetails, searchEvents } from '../controllers/eventController';
 import { auth } from '../middleware/auth';
+import { getTicketmasterEvents } from '../controllers/ticketmasterController';
 
 const router = express.Router();
 
-// Get events near a location
+// Public routes
 router.get('/nearby', getEvents);
-
-// Search events with filters
 router.get('/search', searchEvents);
-
-// Get detailed information about a specific event
+router.get('/ticketmaster/nearby', getTicketmasterEvents);
 router.get('/:eventId', getEventDetails);
 
 // Protected routes (require authentication)
