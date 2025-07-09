@@ -37,6 +37,8 @@ const Navbar: React.FC = () => {
     { name: 'Home', path: '/' },
     { name: 'Restaurants', path: '/restaurants' },
     { name: 'Events', path: '/events' },
+    { name: 'Hotels', path: '/hotels' },
+    ...(user ? [{ name: 'Saved', path: '/saved' }] : []),
   ];
   return (
     <nav className="bg-white shadow border-b border-gray-200 sticky top-0 z-50">
@@ -73,6 +75,20 @@ const Navbar: React.FC = () => {
               </button>
               {dropdownOpen && (
                 <div className="absolute right-0 mt-2 w-40 bg-white border border-gray-200 rounded-lg shadow-lg z-50 animate-fade-in">
+                  <Link
+                    to="/saved"
+                    className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg"
+                    onClick={() => setDropdownOpen(false)}
+                  >
+                    Saved Items
+                  </Link>
+                  <Link
+                    to="/profile"
+                    className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg"
+                    onClick={() => setDropdownOpen(false)}
+                  >
+                    Profile
+                  </Link>
                   <button
                     className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg"
                     onClick={() => {

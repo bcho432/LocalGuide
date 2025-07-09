@@ -1,7 +1,7 @@
 import express from 'express';
 import { getEvents, getEventDetails, searchEvents } from '../controllers/eventController';
 import { auth } from '../middleware/auth';
-import { getTicketmasterEvents } from '../controllers/ticketmasterController';
+import { getTicketmasterEvents, getTicketmasterEventDetails } from '../controllers/ticketmasterController';
 
 const router = express.Router();
 
@@ -9,6 +9,7 @@ const router = express.Router();
 router.get('/nearby', getEvents);
 router.get('/search', searchEvents);
 router.get('/ticketmaster/nearby', getTicketmasterEvents);
+router.get('/ticketmaster/:eventId', getTicketmasterEventDetails);
 router.get('/:eventId', getEventDetails);
 
 // Protected routes (require authentication)
@@ -75,6 +76,6 @@ router.get('/favorites/my', async (req, res) => {
     console.error('Error fetching favorites:', error);
     res.status(500).json({ error: 'Failed to fetch favorites' });
   }
-});
+  });
 
 export default router; 

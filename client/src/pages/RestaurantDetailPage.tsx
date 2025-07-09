@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { MapPin, Clock, Star, Car } from 'lucide-react';
+import { MapPin, Clock, Star, Car, Heart } from 'lucide-react';
 import { restaurantService } from '../services/restaurantService';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 const GOOGLE_MAPS_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
 
@@ -124,14 +125,76 @@ const RestaurantDetailPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [travelTime, setTravelTime] = useState<string | null>(null);
   const [restaurantStatus, setRestaurantStatus] = useState<{ isOpen: boolean; closesSoon?: boolean; opensSoon?: boolean; nextOpenTime?: string; nextCloseTime?: string } | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     async function fetchDetails() {
       setLoading(true);
       setError(null);
+      
+      // Check cache first
+      const cachedRestaurant = localStorage.getItem(`cachedRestaurant_${id}`);
+      if (cachedRestaurant) {
+        const restaurantData = JSON.parse(cachedRestaurant);
+        // Regenerate photo URLs for cached data
+        if (restaurantData.photoReferences) {
+          restaurantData.photos = restaurantData.photoReferences.map((photoRef: string) => 
+            `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${photoRef}&key=${process.env.REACT_APP_GOOGLE_MAPS_API_KEY}`
+          );
+        }
+        setRestaurant(restaurantData);
+        
+        // Check restaurant status
+        if (restaurantData.openingHoursText && restaurantData.openingHoursText.length > 0) {
+          setRestaurantStatus(getRestaurantStatus(restaurantData.openingHoursText));
+        }
+        
+        // Get travel time from cache or calculate
+        const cachedTravelTime = localStorage.getItem(`cachedTravelTime_${id}`);
+        if (cachedTravelTime) {
+          setTravelTime(cachedTravelTime);
+        } else {
+          // Calculate travel time
+          const userLocation = localStorage.getItem('userLocation');
+          if (userLocation && restaurantData.location) {
+            const { lat, lng } = JSON.parse(userLocation);
+            const destLat = restaurantData.location.lat;
+            const destLng = restaurantData.location.lng;
+            try {
+              const directionsRes = await fetch(`http://localhost:5001/api/restaurants/directions?origin=${lat},${lng}&destination=${destLat},${destLng}`);
+              const directionsData = await directionsRes.json();
+              if (directionsData.routes && directionsData.routes[0]) {
+                const travelTimeText = directionsData.routes[0].legs[0].duration.text;
+                setTravelTime(travelTimeText);
+                localStorage.setItem(`cachedTravelTime_${id}`, travelTimeText);
+              } else {
+                setTravelTime('N/A');
+              }
+            } catch (error) {
+              setTravelTime('N/A');
+            }
+          }
+        }
+        
+        setLoading(false);
+        return;
+      }
+      
       try {
         const data = await restaurantService.getRestaurantDetails(id!);
         setRestaurant(data);
+        
+        // Cache the restaurant details with photo references
+        const restaurantForCache = {
+          ...data,
+          photoReferences: data.photos ? data.photos.map((photoUrl: string) => {
+            const photoRefMatch = photoUrl.match(/photoreference=([^&]+)/);
+            return photoRefMatch ? photoRefMatch[1] : null;
+          }).filter(Boolean) : [],
+          photos: [] // Don't cache the actual URLs
+        };
+        localStorage.setItem(`cachedRestaurant_${id}`, JSON.stringify(restaurantForCache));
         
         // Check restaurant status
         if (data.openingHoursText && data.openingHoursText.length > 0) {
@@ -148,7 +211,9 @@ const RestaurantDetailPage: React.FC = () => {
           const directionsRes = await fetch(`http://localhost:5001/api/restaurants/directions?origin=${lat},${lng}&destination=${destLat},${destLng}`);
           const directionsData = await directionsRes.json();
           if (directionsData.routes && directionsData.routes[0]) {
-            setTravelTime(directionsData.routes[0].legs[0].duration.text);
+            const travelTimeText = directionsData.routes[0].legs[0].duration.text;
+            setTravelTime(travelTimeText);
+            localStorage.setItem(`cachedTravelTime_${id}`, travelTimeText);
           } else {
             setTravelTime('N/A');
           }
@@ -162,7 +227,38 @@ const RestaurantDetailPage: React.FC = () => {
     fetchDetails();
   }, [id]);
 
-  if (loading) return <div className="py-16 text-center">Loading...</div>;
+  useEffect(() => {
+    async function checkSaved() {
+      if (!restaurant) return;
+      try {
+        const favorites = await restaurantService.getMyFavorites();
+        setSaved(favorites.some((fav: any) => fav.place_id === restaurant.place_id));
+      } catch (e) {
+        setSaved(false);
+      }
+    }
+    checkSaved();
+  }, [restaurant]);
+
+  const handleSave = async () => {
+    if (!restaurant) return;
+    setSaving(true);
+    try {
+      if (saved) {
+        await restaurantService.removeFromFavorites(restaurant.place_id);
+        setSaved(false);
+      } else {
+        await restaurantService.addToFavorites(restaurant.place_id, restaurant.name);
+        setSaved(true);
+      }
+    } catch (e) {
+      // Optionally show error
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <LoadingSpinner message="Loading restaurant details..." />;
   if (error) return <div className="py-16 text-center text-red-600">{error}</div>;
   if (!restaurant) return null;
 
@@ -215,10 +311,45 @@ const RestaurantDetailPage: React.FC = () => {
     );
   };
 
+  // Helper to get restaurant image
+  const getRestaurantImage = () => {
+    if (restaurant?.photos && restaurant.photos.length > 0) {
+      return restaurant.photos[0];
+    }
+    return null;
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-2xl mx-auto bg-white rounded-lg shadow p-8">
-        <h1 className="text-3xl font-bold mb-2">{restaurant.name}</h1>
+        {/* Restaurant Image */}
+        {getRestaurantImage() ? (
+          <div className="h-64 md:h-96 overflow-hidden mb-6 rounded">
+            <img
+              src={getRestaurantImage()!}
+              alt={restaurant.name}
+              className="w-full h-full object-cover"
+              style={{ objectPosition: 'center' }}
+            />
+          </div>
+        ) : (
+          <div className="h-64 md:h-96 flex flex-col items-center justify-center bg-gray-200 mb-6 rounded">
+            <span className="text-6xl font-bold text-gray-400">:(</span>
+            <span className="text-sm text-gray-500 mt-2">No image available</span>
+          </div>
+        )}
+        {/* Restaurant Name and Save Button Row */}
+        <div className="flex items-center justify-between mb-2">
+          <h1 className="text-3xl font-bold">{restaurant.name}</h1>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className={`flex items-center px-4 py-2 rounded-md text-white text-sm font-medium transition-colors ${saved ? 'bg-purple-700 hover:bg-purple-800' : 'bg-purple-600 hover:bg-purple-700'}`}
+          >
+            <Heart className={`w-5 h-5 mr-2 ${saved ? 'fill-red-500' : ''}`} />
+            {saving ? 'Saving...' : saved ? 'Unsave' : 'Save'}
+          </button>
+        </div>
         <div className="flex items-center text-gray-600 mb-2">
           <MapPin className="w-4 h-4 mr-2" />
           {restaurant.address}

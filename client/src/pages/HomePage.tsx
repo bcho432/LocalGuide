@@ -13,6 +13,7 @@ import {
   Clock,
   Shield
 } from 'lucide-react';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 const HomePage: React.FC = () => {
   const { currentLocation, getCurrentLocation, isLoading } = useLocation();
@@ -86,12 +87,12 @@ const HomePage: React.FC = () => {
                 <button
                   onClick={getCurrentLocation}
                   disabled={isLoading}
-                  className="btn btn-secondary text-lg px-8 py-3"
+                  className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center"
                 >
                   {isLoading ? (
-                    <div className="loading-spinner w-5 h-5 mr-2"></div>
+                    <LoadingSpinner size="sm" message="" className="mr-2" />
                   ) : (
-                    <MapPin className="w-5 h-5 mr-2" />
+                    <span className="mr-2">📍</span>
                   )}
                   {isLoading ? 'Getting Location...' : 'Get My Location'}
                 </button>

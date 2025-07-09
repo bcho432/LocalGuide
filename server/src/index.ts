@@ -10,6 +10,7 @@ import { notFound } from './middleware/notFound';
 import restaurantRoutes from './routes/restaurants';
 import eventRoutes from './routes/events';
 import userRoutes from './routes/users';
+import hotelRoutes from './routes/hotels';
 import { initializeDatabase } from './database/init';
 
 // Load environment variables
@@ -65,6 +66,7 @@ app.get('/health', (req, res) => {
 app.use('/api/restaurants', restaurantRoutes);
 app.use('/api/events', eventRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/hotels', hotelRoutes);
 
 // 404 handler
 app.use(notFound);

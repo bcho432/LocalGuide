@@ -204,6 +204,26 @@ router.get('/activity', auth, async (req, res) => {
   }
 });
 
+// Get all user favorites
+router.get('/favorites', auth, async (req, res) => {
+  try {
+    const userId = (req as any).user.id;
+
+    const favorites = await getAll(
+      'SELECT * FROM user_favorites WHERE user_id = ? ORDER BY created_at DESC',
+      [userId]
+    );
+
+    return res.json({
+      success: true,
+      favorites
+    });
+  } catch (error) {
+    console.error('Favorites fetch error:', error);
+    return res.status(500).json({ error: 'Failed to fetch favorites' });
+  }
+});
+
 // Change password (protected route)
 router.put('/change-password', auth, async (req, res) => {
   try {

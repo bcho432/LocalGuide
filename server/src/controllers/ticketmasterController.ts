@@ -45,4 +45,52 @@ export const getTicketmasterEvents = async (req: Request, res: Response) => {
     res.status(500).json({ error: 'Failed to fetch events from Ticketmaster' });
     return;
   }
+};
+
+
+
+export const getTicketmasterEventDetails = async (req: Request, res: Response) => {
+  try {
+    const { eventId } = req.params;
+    if (!eventId) {
+      res.status(400).json({ error: 'Event ID is required' });
+      return;
+    }
+    
+    try {
+      const params: any = {
+        apikey: process.env.TICKETMASTER_API_KEY,
+      };
+      const response = await axios.get(`https://app.ticketmaster.com/discovery/v2/events/${eventId}.json`, { params });
+      const event = response.data;
+      
+              const details = {
+          id: event.id,
+          name: event.name,
+          url: event.url,
+          image: event.images?.[0]?.url,
+          date: event.dates?.start?.localDate,
+          time: event.dates?.start?.localTime,
+          venue: event._embedded?.venues?.[0]?.name,
+          address: event._embedded?.venues?.[0]?.address?.line1,
+          city: event._embedded?.venues?.[0]?.city?.name,
+          country: event._embedded?.venues?.[0]?.country?.name,
+          latitude: event._embedded?.venues?.[0]?.location?.latitude,
+          longitude: event._embedded?.venues?.[0]?.location?.longitude,
+          category: event.classifications?.[0]?.segment?.name,
+          description: event.info || event.description || '',
+        };
+      
+      res.json({ success: true, event: details });
+      return;
+    } catch (error) {
+      console.error('Error fetching event details:', error);
+      res.status(500).json({ error: 'Failed to fetch event details from Ticketmaster' });
+      return;
+    }
+  } catch (error: any) {
+    console.error('Ticketmaster event details error:', error.response?.data || error.message);
+    res.status(500).json({ error: 'Failed to fetch event details from Ticketmaster' });
+    return;
+  }
 }; 

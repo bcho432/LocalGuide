@@ -5,6 +5,7 @@ import L from 'leaflet';
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 // TypeScript module declarations for PNG imports
 declare module '*.png';
@@ -174,6 +175,25 @@ const Home: React.FC = () => {
     }
   };
 
+  // Function to clear all caches when location changes
+  const clearAllCaches = () => {
+    // Clear restaurant caches
+    localStorage.removeItem('cachedRestaurants');
+    localStorage.removeItem('cachedLocation');
+    
+    // Clear hotel caches
+    localStorage.removeItem('cachedHotels');
+    localStorage.removeItem('cachedHotelLocation');
+    
+    // Clear event caches
+    localStorage.removeItem('cachedEvents');
+    localStorage.removeItem('cachedEventLocation');
+    localStorage.removeItem('cachedEventFilters');
+    
+    // Clear individual detail caches (these will be refreshed when needed)
+    // Note: We don't clear all detail caches as they might still be relevant
+  };
+
   const handleGetLocation = () => {
     setLoadingLocation(true);
     setLocationError(null);
@@ -187,6 +207,10 @@ const Home: React.FC = () => {
         const coords = { lat: position.coords.latitude, lng: position.coords.longitude };
         setLocation(coords);
         localStorage.setItem('userLocation', JSON.stringify(coords));
+        
+        // Clear all caches when location changes
+        clearAllCaches();
+        
         setLoadingLocation(false);
         setSearchedAddress('');
         // Fetch restaurants
@@ -228,6 +252,10 @@ const Home: React.FC = () => {
       }
       setLocation(coords);
       localStorage.setItem('userLocation', JSON.stringify(coords));
+      
+      // Clear all caches when location changes
+      clearAllCaches();
+      
       setSearchingLocation(false);
       setSearchedAddress(searchAddress.trim());
       setSelectedPlaceId(null);
@@ -309,11 +337,18 @@ const Home: React.FC = () => {
             {/* Get Current Location */}
             <div className="flex flex-col items-center">
               <button
-                className="btn btn-white text-primary-600 font-semibold shadow-md px-8 py-3 text-lg hover:scale-105 transition-transform mb-2"
+                className="btn btn-white text-primary-600 font-semibold shadow-md px-8 py-3 text-lg hover:scale-105 transition-transform mb-2 flex items-center justify-center"
                 onClick={handleGetLocation}
                 disabled={loadingLocation}
               >
-                {loadingLocation ? 'Getting Location...' : '📍 Get My Location'}
+                {loadingLocation ? (
+                  <>
+                    <LoadingSpinner size="sm" message="" className="mr-2" />
+                    Getting Location...
+                  </>
+                ) : (
+                  '📍 Get My Location'
+                )}
               </button>
               <p className="text-sm opacity-80">Use your current location</p>
             </div>
@@ -358,11 +393,18 @@ const Home: React.FC = () => {
                   )}
                 </div>
                 <button
-                  className="btn btn-white text-primary-600 font-semibold shadow-md px-4 py-2 text-base hover:scale-105 transition-transform"
+                  className="btn btn-white text-primary-600 font-semibold shadow-md px-4 py-2 text-base hover:scale-105 transition-transform flex items-center justify-center"
                   onClick={handleSearchLocation}
                   disabled={searchingLocation}
                 >
-                  {searchingLocation ? 'Searching...' : '🔍 Search'}
+                  {searchingLocation ? (
+                    <>
+                      <LoadingSpinner size="sm" message="" className="mr-2" />
+                      Searching...
+                    </>
+                  ) : (
+                    '🔍 Search'
+                  )}
                 </button>
               </div>
               <p className="text-sm opacity-80 mt-2 text-left w-full">Select a location then press Enter to search</p>
@@ -373,6 +415,7 @@ const Home: React.FC = () => {
             <div className="flex flex-col sm:flex-row gap-4 justify-center mb-8 mt-8 animate-fade-in">
               <a href="/restaurants" className="btn btn-outline text-white border-white font-semibold shadow-md px-8 py-3 text-lg hover:bg-white hover:text-primary-600 hover:scale-105 transition-transform">Find Restaurants</a>
               <a href="/events" className="btn btn-outline text-white border-white font-semibold shadow-md px-8 py-3 text-lg hover:bg-white hover:text-primary-600 hover:scale-105 transition-transform">Find Events</a>
+              <a href="/hotels" className="btn btn-outline text-white border-white font-semibold shadow-md px-8 py-3 text-lg hover:bg-white hover:text-primary-600 hover:scale-105 transition-transform">Find Hotels</a>
             </div>
           )}
           {locationError && <div className="text-red-200 font-semibold mt-2">{locationError}</div>}
@@ -385,8 +428,8 @@ const Home: React.FC = () => {
           <div className="max-w-4xl mx-auto text-center">
             <p className="text-lg text-blue-800 font-medium">
               {searchedAddress 
-                ? `Great! Found location for "${searchedAddress}". Now you can click 'Find Restaurants' or 'Find Events' to find local restaurants or events going on in that area!`
-                : "Great! Now you can click 'Find Restaurants' or 'Find Events' to find local restaurants or events going on in your area!"
+                ? `Great! Found location for "${searchedAddress}". Now you can click 'Find Restaurants', 'Find Events', or 'Find Hotels' to find local restaurants, events, or hotels in that area!`
+                : "Great! Now you can click 'Find Restaurants', 'Find Events', or 'Find Hotels' to find local restaurants, events, or hotels in your area!"
               }
             </p>
           </div>

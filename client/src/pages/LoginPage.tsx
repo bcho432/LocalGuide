@@ -5,6 +5,7 @@ import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import { useAuth } from '../contexts/AuthContext';
 import { Mail, Lock, Eye, EyeOff, ArrowLeft } from 'lucide-react';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 const schema = yup.object({
   email: yup.string().email('Please enter a valid email').required('Email is required'),
@@ -144,10 +145,10 @@ const LoginPage: React.FC = () => {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="btn btn-primary w-full py-3 text-base"
+                className="w-full bg-blue-600 text-white py-3 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
               >
                 {isLoading ? (
-                  <div className="loading-spinner w-5 h-5 mr-2"></div>
+                  <LoadingSpinner size="sm" message="" className="mr-2" />
                 ) : null}
                 {isLoading ? 'Signing in...' : 'Sign in'}
               </button>

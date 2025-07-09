@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { restaurantService, Restaurant } from '../services/restaurantService';
-import { Phone, ExternalLink, Tag, Star, MapPin } from 'lucide-react';
+import { Phone, ExternalLink, Tag, Star, MapPin, Heart } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 const Restaurants: React.FC = () => {
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
@@ -10,14 +11,26 @@ const Restaurants: React.FC = () => {
   const [noLocation, setNoLocation] = useState(false);
   // Track which images failed to load
   const [imageError, setImageError] = useState<{ [id: string]: boolean }>({});
+  // Track saved restaurants
+  const [savedRestaurants, setSavedRestaurants] = useState<Set<string>>(new Set());
+  const [savingStates, setSavingStates] = useState<{ [id: string]: boolean }>({});
 
   useEffect(() => {
+    loadSavedRestaurants();
     const cachedRestaurants = localStorage.getItem('cachedRestaurants');
     const cachedLocation = localStorage.getItem('cachedLocation');
     const savedLocation = localStorage.getItem('userLocation');
     if (cachedRestaurants && cachedLocation && savedLocation) {
       if (cachedLocation === savedLocation) {
-        setRestaurants(JSON.parse(cachedRestaurants));
+        const cachedData = JSON.parse(cachedRestaurants);
+        // Regenerate photo URLs for cached data to ensure they're fresh
+        const restaurantsWithFreshPhotos = cachedData.map((restaurant: any) => ({
+          ...restaurant,
+          photos: restaurant.photoReferences ? restaurant.photoReferences.map((photoRef: string) => 
+            `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${photoRef}&key=${process.env.REACT_APP_GOOGLE_MAPS_API_KEY}`
+          ) : []
+        }));
+        setRestaurants(restaurantsWithFreshPhotos);
         return;
       }
     }
@@ -30,13 +43,55 @@ const Restaurants: React.FC = () => {
     restaurantService.getNearbyRestaurants(lat, lng)
       .then(results => {
         setRestaurants(results);
+        // Store photo references separately for cache regeneration
+        const restaurantsForCache = results.map((restaurant: any) => ({
+          ...restaurant,
+          photoReferences: restaurant.photos ? restaurant.photos.map((photoUrl: string) => {
+            const photoRefMatch = photoUrl.match(/photoreference=([^&]+)/);
+            return photoRefMatch ? photoRefMatch[1] : null;
+          }).filter(Boolean) : [],
+          photos: [] // Don't cache the actual URLs
+        }));
         // Update cache
-        localStorage.setItem('cachedRestaurants', JSON.stringify(results));
+        localStorage.setItem('cachedRestaurants', JSON.stringify(restaurantsForCache));
         localStorage.setItem('cachedLocation', JSON.stringify({ lat, lng }));
       })
       .catch(() => setError('Failed to fetch restaurants.'))
       .finally(() => setLoading(false));
   }, []);
+
+  const loadSavedRestaurants = async () => {
+    try {
+      const favorites = await restaurantService.getMyFavorites();
+      const savedIds = new Set(favorites.map((fav: any) => fav.place_id));
+      setSavedRestaurants(savedIds);
+    } catch (error) {
+      console.error('Failed to load saved restaurants:', error);
+    }
+  };
+
+  const handleSaveRestaurant = async (restaurant: Restaurant) => {
+    const isSaved = savedRestaurants.has(restaurant.id);
+    setSavingStates(prev => ({ ...prev, [restaurant.id]: true }));
+    
+    try {
+      if (isSaved) {
+        await restaurantService.removeFromFavorites(restaurant.id);
+        setSavedRestaurants(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(restaurant.id);
+          return newSet;
+        });
+      } else {
+        await restaurantService.addToFavorites(restaurant.id, restaurant.name);
+        setSavedRestaurants(prev => new Set(prev).add(restaurant.id));
+      }
+    } catch (error) {
+      console.error('Failed to save/unsave restaurant:', error);
+    } finally {
+      setSavingStates(prev => ({ ...prev, [restaurant.id]: false }));
+    }
+  };
 
   if (noLocation) {
     return (
@@ -51,13 +106,7 @@ const Restaurants: React.FC = () => {
     <div className="py-16 text-center">
       <h1 className="text-3xl font-bold mb-4">Restaurants Near You</h1>
       {loading && (
-        <div className="flex flex-col items-center justify-center my-12 animate-fade-in">
-          <svg className="animate-spin h-8 w-8 text-blue-500 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
-          </svg>
-          <span className="text-blue-600 text-lg font-semibold animate-pulse">Loading restaurants...</span>
-        </div>
+        <LoadingSpinner message="Loading restaurants..." />
       )}
       {error && <p className="text-red-600">{error}</p>}
       <div className="max-w-4xl mx-auto mt-8 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -144,6 +193,14 @@ const Restaurants: React.FC = () => {
                   Yelp
                 </a>
               )}
+              <button
+                onClick={() => handleSaveRestaurant(r)}
+                className="flex items-center justify-center px-3 py-2 bg-purple-600 text-white text-sm rounded-md hover:bg-purple-700 transition-colors"
+                disabled={savingStates[r.id]}
+              >
+                <Heart className={`w-4 h-4 mr-1 ${savedRestaurants.has(r.id) ? 'fill-red-500' : ''}`} />
+                {savingStates[r.id] ? 'Saving...' : (savedRestaurants.has(r.id) ? 'Unsave' : 'Save')}
+              </button>
             </div>
           </div>
         ))}
