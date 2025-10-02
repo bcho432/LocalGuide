@@ -1,4 +1,4 @@
-# 🍽️ Local Events & Restaurant Recommender
+# Local Events & Restaurant Recommender :D
 
 A modern web application that recommends restaurants and local events based on your location, preferences, and current time. Built with React, Node.js, and integrated with multiple APIs.
 
